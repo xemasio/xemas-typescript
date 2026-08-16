@@ -1,0 +1,22 @@
+{
+  "name": "@xemas-security/sdk",
+  "version": "0.1.0",
+  "description": "Official TypeScript/JavaScript SDK for the XemaS on-chain intelligence API",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist", "openapi", "README.md", "LICENSE"],
+  "engines": { "node": ">=18" },
+  "keywords": ["blockchain", "security", "on-chain", "intelligence", "web3", "xemas"],
+  "homepage": "https://xemas.io/api",
+  "repository": { "type": "git", "url": "git+https://github.com/xemasio/xemas-typescript.git" },
+  "bugs": { "url": "https://github.com/xemasio/xemas-typescript/issues" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "devDependencies": { "typescript": "^5.4.0", "vitest": "^1.6.0", "@types/node": "^20.0.0" }
+}
