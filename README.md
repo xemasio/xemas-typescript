@@ -73,6 +73,26 @@ evidence about the address you asked about.
 
 **The SDK does not retry.** A retry spends your quota and latency budget, so that stays your call.
 
+## Module format
+
+This package is **ESM-only**. `import` works everywhere; `require()` does not:
+
+```js
+const { Xemas } = require("@xemas-security/sdk");
+// Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: No "exports" main defined
+```
+
+From a CommonJS file, use a dynamic import:
+
+```js
+const { Xemas } = await import("@xemas-security/sdk");
+```
+
+This is deliberate rather than an oversight. A dual ESM/CJS build would ship two copies of every
+class, so `err instanceof RateLimitError` would silently return `false` when the error crossed
+module systems - and this SDK's error handling is built on exactly those `instanceof` checks. One
+copy of each class is worth more than `require()` support.
+
 ## Configuration
 
 ```ts

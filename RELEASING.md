@@ -87,15 +87,16 @@ reaching for a credential.
 
 ### Why the first OIDC release matters
 
-The bootstrap publish demonstrates nothing about whether trusted publishing works - it proves only
-that a human with a browser session can publish. **As of 0.1.0, trusted publishing is configured
-but UNPROVEN.**
+The bootstrap publish demonstrated nothing about whether trusted publishing works - only that a
+human with a browser session can publish. `0.1.1` is the release cutting that question: published
+from CI, with no credential in the repository and no human holding one.
 
-`0.1.1` is the release that will actually prove it: published from CI, with no credential present
-in the repository and no human holding one. Until that release succeeds, treat OIDC publishing as
-untested and do not assume a future release will "just work".
+Until it lands, treat OIDC publishing here as **configured but unproven**. The Python SDK has
+already proved the same pipeline end to end - `xemas-sdk 0.1.0` was published by OIDC with no
+token at any point, and PyPI converted its *pending* publisher to an *active* one, which is the
+registry's own confirmation that the identity matched.
 
-Update this section once it has, and say which version proved it.
+When 0.1.1 succeeds, replace this paragraph with the observed result and the run link.
 
 ## Provenance
 
