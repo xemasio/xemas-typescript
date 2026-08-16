@@ -1,0 +1,91 @@
+# Publish @xemas-security/sdk to npm via Trusted Publishing (OIDC).
+#
+# There is no NPM_TOKEN anywhere in this repository, and there must never be one. npm matches the
+# GitHub OIDC claim against owner/repository/workflow/environment, so the identity below is the
+# credential:
+#
+#     owner       xemasio          <- the GITHUB owner. Note this differs from the npm scope
+#                                     (@xemas-security) - two different namespaces, easy to cross
+#     repository  xemas-typescript
+#     workflow    release.yml      <- this file's NAME is part of the identity; renaming it breaks
+#                                     publishing until the npm publisher record is updated too
+#     environment release          <- gated, so a publish waits for human approval
+#
+# Publishing from a public repo with trusted publishing also produces provenance attestations
+# automatically, which is why `repository` in package.json must match this repo exactly.
+name: release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor is what package.json declares (engines.node >=18); the ceiling is current. If
+        # this matrix and that floor disagree, the package claims support it does not test.
+        node-version: ["18", "22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  publish:
+    name: publish to npm
+    needs: test
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://www.npmjs.com/package/@xemas-security/sdk
+    permissions:
+      contents: read
+      id-token: write            # the OIDC token IS the credential - no secrets needed
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # npm trusted publishing needs a recent npm (>=11.5.1) and Node; 24 ships one.
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Verify the tag matches the packaged version
+        # Guards the failure that is painful to undo: a release tagged v0.1.1 that ships 0.1.0.
+        # npm versions are immutable once published, so this is the only cheap moment to catch it.
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          TAG="${GITHUB_REF_NAME#v}"
+          echo "packaged version: $PKG"
+          echo "release tag     : $TAG"
+          if [ "$PKG" != "$TAG" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG. npm versions are immutable - fix the version or the tag before releasing."
+            exit 1
+          fi
+
+      - name: Ensure npm supports trusted publishing
+        # Fails loudly rather than falling back to a credential-based publish.
+        run: |
+          npm install -g npm@latest
+          echo "npm $(npm --version)"
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+      - name: Publish
+        # No NPM_TOKEN: the CLI detects the GitHub OIDC environment. Supplying a token would defeat
+        # the point of trusted publishing and reintroduce a long-lived credential.
+        run: npm publish --access public
