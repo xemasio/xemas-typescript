@@ -1,3 +1,10 @@
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Never commit registry credentials. A project-local .npmrc is the normal place an auth
+# token lands during a manual publish, and it is one `git add -A` away from being public.
+# Publishing is done by trusted publishing (OIDC) via .github/workflows/release.yml, which
+# needs no token at all - see RELEASING.md for the one-time bootstrap exception.
+.npmrc
+*.tgz
