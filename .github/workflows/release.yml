@@ -82,6 +82,15 @@ jobs:
             exit 1
           fi
 
+      # Distinguishes the two causes of a failed OIDC publish, which produce identical output:
+      #   vars absent  -> GitHub never issued an ID token (permissions/environment problem, ours)
+      #   vars present -> the registry rejected the exchange (no trusted publisher record, npm's)
+      # Prints presence only. The request token is a credential and is never echoed.
+      - name: Check GitHub issued an OIDC token
+        run: |
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL   present: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}${ACTIONS_ID_TOKEN_REQUEST_URL:-NO}"
+          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN present: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+yes}${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-NO}"
+
       - name: Ensure npm supports trusted publishing
         # Fails loudly rather than falling back to a credential-based publish.
         run: |
