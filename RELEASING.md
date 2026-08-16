@@ -12,13 +12,43 @@ npm matches the GitHub OIDC claim against this identity, so the workflow *is* th
 | Workflow filename | `release.yml` |
 | Environment | `release` (required reviewer) |
 
-Two things break publishing if changed carelessly:
+Three things break publishing if changed carelessly:
 
 - **Renaming `release.yml`.** The filename is part of the identity. Renaming it breaks publishing
   until the npm publisher record is updated to match.
 - **Confusing the namespaces.** The npm *scope* is `@xemas-security`; the *GitHub owner* is
   `xemasio`. The publisher record needs the GitHub one. This exact mistake was made once on PyPI
   (`pbk714290` entered instead of `xemasio`) and would have failed at publish time.
+- **Adding `registry-url:` to `actions/setup-node`.** See below. It is the natural thing to write
+  and it silently disables OIDC.
+
+### `registry-url` disables trusted publishing (observed 2026-08-16)
+
+The first OIDC attempt at `0.1.1` failed:
+
+```
+npm error code E404
+npm error 404 Not Found - PUT https://registry.npmjs.org/@xemas-security%2fsdk - Not found
+npm error 404  The requested resource '@xemas-security/sdk@0.1.1' could not be found
+npm error 404  or you do not have permission to access it.
+```
+
+The error names the package and suggests it is missing or the publisher record is wrong. **Both
+readings are false.** The package existed; the publisher record was fine.
+
+`actions/setup-node` with `registry-url` writes an `.npmrc` containing
+`//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` and exports `NODE_AUTH_TOKEN` as a literal
+placeholder when no secret is supplied. npm therefore finds a configured credential, attempts
+**token** authentication with a meaningless value, is rejected, and never reaches the OIDC exchange
+at all. npm answers unauthorized publishes with 404 rather than 403 so the registry does not
+disclose which private packages exist - which is why an auth failure reads as a missing package.
+
+The diagnostic that settles it in one step: **search the job log for any OIDC or token-exchange
+line.** In the failing run (`31978864209`) there were none - npm never tried. A genuine
+publisher-record mismatch fails *during* the exchange and says so.
+
+The fix is to remove `registry-url` and set nothing in its place. OIDC needs no registry
+configuration; `id-token: write` on the job is the whole credential.
 
 ## Normal release
 

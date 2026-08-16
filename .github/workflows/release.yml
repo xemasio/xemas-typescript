@@ -60,7 +60,14 @@ jobs:
         with:
           # npm trusted publishing needs a recent npm (>=11.5.1) and Node; 24 ships one.
           node-version: "24"
-          registry-url: "https://registry.npmjs.org"
+          # NO registry-url. It looks like the obvious thing to set, and it silently breaks OIDC:
+          # setup-node then writes an .npmrc containing `_authToken=${NODE_AUTH_TOKEN}` and exports
+          # NODE_AUTH_TOKEN as a literal placeholder when no secret is supplied. npm sees a
+          # configured token, attempts TOKEN auth with that placeholder, gets
+          #   404 Not Found - PUT https://registry.npmjs.org/@xemas-security%2fsdk
+          # and never falls back to the OIDC exchange. The 404 reads like a missing package or a
+          # permissions problem; it is neither. Verified in run 31978864209, whose log contains no
+          # OIDC exchange at all.
 
       - name: Verify the tag matches the packaged version
         # Guards the failure that is painful to undo: a release tagged v0.1.1 that ships 0.1.0.
