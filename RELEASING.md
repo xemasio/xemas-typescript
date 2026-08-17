@@ -19,36 +19,57 @@ Three things break publishing if changed carelessly:
 - **Confusing the namespaces.** The npm *scope* is `@xemas-security`; the *GitHub owner* is
   `xemasio`. The publisher record needs the GitHub one. This exact mistake was made once on PyPI
   (`pbk714290` entered instead of `xemasio`) and would have failed at publish time.
-- **Adding `registry-url:` to `actions/setup-node`.** See below. It is the natural thing to write
-  and it silently disables OIDC.
+- **Publishing before the trusted publisher record exists.** It fails with an error that points
+  everywhere except the actual cause. See below.
 
-### `registry-url` disables trusted publishing (observed 2026-08-16)
+### Diagnosing a failed OIDC publish (observed 2026-08-16/17)
 
-The first OIDC attempt at `0.1.1` failed:
+`0.1.1` failed twice before succeeding, and the two failure messages were different enough to send
+the investigation down a wrong path. Both had **one** cause: no trusted publisher was configured on
+`npmjs.com/package/@xemas-security/sdk/access` yet.
 
+| Attempt | Workflow | Publisher record | Result |
+|---|---|---|---|
+| 1 | with `registry-url` | not configured | `E404 ... PUT /@xemas-security%2fsdk - Not found` |
+| 2 | `registry-url` removed | not configured | `ENEEDAUTH ... need auth` |
+| 3 | with `registry-url` (re-run of attempt 1) | **configured** | published, with provenance |
+
+Why the same cause produced two errors:
+
+- **With `registry-url`**, `actions/setup-node` writes an `.npmrc` containing
+  `_authToken=${NODE_AUTH_TOKEN}` and exports `NODE_AUTH_TOKEN` as a literal placeholder when no
+  secret is supplied. npm attempts token auth with that meaningless value and is rejected. npm
+  answers unauthorized publishes with **404 rather than 403**, so the registry does not disclose
+  which private packages exist - which is why an auth failure reads as a missing package.
+- **Without it**, npm has no credential to try at all, so it says so plainly: `ENEEDAUTH`.
+
+**The trap worth remembering:** the second error looked like progress, so the change that produced
+it looked like a partial fix. It was not - it was the same failure with the misleading placeholder
+removed. Attempt 3 published from `873765f`, the commit that still HAD `registry-url`, which proves
+`registry-url` does not prevent trusted publishing. A changed error message is not evidence that
+the change was corrective.
+
+`registry-url` is nonetheless still absent from the publish job, on the narrower and true claim
+that it contributes a placeholder credential that turns a clear `ENEEDAUTH` into a misleading 404.
+That is a diagnosability improvement, not a functional one.
+
+**Check the publisher record first.** It is the one input that lives outside this repository, so it
+is the one nothing in the codebase can confirm. The `Check GitHub issued an OIDC token` step in the
+workflow narrows the rest: if those variables are present and publishing still fails, the problem is
+the registry-side record, not this workflow.
+
+### How to verify a publish really used OIDC
+
+Not from the CLI's success line, and not from the fact that the version appears. Check the package
+page for a **Provenance** block naming the source commit, the build file and a transparency-log
+entry, or:
+
+```bash
+npm view @xemas-security/sdk@<version> dist.attestations
 ```
-npm error code E404
-npm error 404 Not Found - PUT https://registry.npmjs.org/@xemas-security%2fsdk - Not found
-npm error 404  The requested resource '@xemas-security/sdk@0.1.1' could not be found
-npm error 404  or you do not have permission to access it.
-```
 
-The error names the package and suggests it is missing or the publisher record is wrong. **Both
-readings are false.** The package existed; the publisher record was fine.
-
-`actions/setup-node` with `registry-url` writes an `.npmrc` containing
-`//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` and exports `NODE_AUTH_TOKEN` as a literal
-placeholder when no secret is supplied. npm therefore finds a configured credential, attempts
-**token** authentication with a meaningless value, is rejected, and never reaches the OIDC exchange
-at all. npm answers unauthorized publishes with 404 rather than 403 so the registry does not
-disclose which private packages exist - which is why an auth failure reads as a missing package.
-
-The diagnostic that settles it in one step: **search the job log for any OIDC or token-exchange
-line.** In the failing run (`31978864209`) there were none - npm never tried. A genuine
-publisher-record mismatch fails *during* the exchange and says so.
-
-The fix is to remove `registry-url` and set nothing in its place. OIDC needs no registry
-configuration; `id-token: write` on the job is the whole credential.
+Provenance attestations are produced by trusted publishing and cannot be produced by a token, so
+they are the only self-evidencing proof that no credential was involved.
 
 ## Normal release
 
@@ -115,18 +136,26 @@ Every release from `0.1.1` onward goes through OIDC. If you find yourself reachi
 something is misconfigured — check the publisher record and the `release` environment before
 reaching for a credential.
 
-### Why the first OIDC release matters
+### The first OIDC release: PROVED (2026-08-17)
 
 The bootstrap publish demonstrated nothing about whether trusted publishing works - only that a
-human with a browser session can publish. `0.1.1` is the release cutting that question: published
-from CI, with no credential in the repository and no human holding one.
+human with a browser session can publish. `0.1.1` cut that question, and the answer is recorded
+rather than assumed:
 
-Until it lands, treat OIDC publishing here as **configured but unproven**. The Python SDK has
-already proved the same pipeline end to end - `xemas-sdk 0.1.0` was published by OIDC with no
-token at any point, and PyPI converted its *pending* publisher to an *active* one, which is the
-registry's own confirmation that the identity matched.
+| | |
+|---|---|
+| Run | [31978864209](https://github.com/xemasio/xemas-typescript/actions/runs/31978864209) |
+| Source commit | `873765f` |
+| Provenance | SLSA v1 attestation, signed on GitHub Actions, in the public transparency log |
 
-When 0.1.1 succeeds, replace this paragraph with the observed result and the run link.
+No token existed in the repository, on a developer machine, or in any environment at any point in
+that release. The provenance attestation is the load-bearing evidence: it is generated by the
+registry from the OIDC claim and cannot be produced by a token publish, so it demonstrates the
+absence of a credential rather than merely asserting it.
+
+The same pipeline is proved on PyPI: `xemas-sdk 0.1.0` published by OIDC with no token, and PyPI
+converted its *pending* publisher to an *active* one - the registry's own confirmation that the
+identity matched.
 
 ## Provenance
 
